@@ -108,7 +108,7 @@ const getUsers = async(req, res) => {
 const postWebpay = async(req, res) => {
     let { total: amount, products: products } = req.body;
     const sessionId = '3'; // Asegúrate de generar un sessionId único si es necesario
-    const returnUrl = 'http://localhost:5173/result';
+    const returnUrl = 'https://comfy-halva-c5e8b7.netlify.app/result';
     let buyOrder = '';
     const divisa = req.body.divisaType; // Asegúrate de que este dato es correcto y necesario
     
