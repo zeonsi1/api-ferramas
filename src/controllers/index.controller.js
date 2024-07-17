@@ -8,13 +8,13 @@ config()
 WebpayPlus.configureForTesting();
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    // connectionString: process.env.DATABASE_URL,
     // ssl: true
-    // host: 'localhost',
-    // user: 'postgres',
-    // password: 'duoc',
-    // database: 'ferreteria',
-    // port: '5432'
+    host: 'localhost',
+    user: 'postgres',
+    password: 'duoc',
+    database: 'ferreteria',
+    port: '5432'
 });
 
 const accountBank = process.env.CENTRAL_BANK_ACCOUNT;
