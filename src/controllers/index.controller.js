@@ -8,13 +8,13 @@ config()
 WebpayPlus.configureForTesting();
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    //connectionString: process.env.DATABASE_URL,
     // ssl: true
-    // host: 'localhost',
-    // user: 'postgres',
-    // password: 'duoc',
-    // database: 'ferreteria',
-    // port: '5432'
+    host: 'localhost',
+    user: 'postgres',
+    password: 'duoc',
+    database: 'ferreteria',
+    port: '5432'
 });
 
 const accountBank = process.env.CENTRAL_BANK_ACCOUNT;
@@ -108,7 +108,7 @@ const getUsers = async(req, res) => {
 const postWebpay = async(req, res) => {
     let { total: amount, products: products } = req.body;
     const sessionId = '3'; // Asegúrate de generar un sessionId único si es necesario
-    const returnUrl = 'https://comfy-halva-c5e8b7.netlify.app/result';
+    const returnUrl = 'http://localhost:5173/result';
     let buyOrder = '';
     const divisa = req.body.divisaType; // Asegúrate de que este dato es correcto y necesario
     
