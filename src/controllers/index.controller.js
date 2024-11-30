@@ -1,7 +1,7 @@
 const axios = require('axios');
 const { Pool } = require('pg');
 const { WebpayPlus } = require('transbank-sdk');
-
+const argon2 = require('argon2');
 const {config} = require('dotenv');
 config()
 
@@ -9,7 +9,7 @@ WebpayPlus.configureForTesting();
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    // ssl: true
+    ssl: true
     // host: 'localhost',
     // user: 'postgres',
     // password: 'duoc',
@@ -18,7 +18,7 @@ const pool = new Pool({
 });
 
 const accountBank = process.env.CENTRAL_BANK_ACCOUNT;
-const passwordBank = process.env.CENTRAL_BANK_PASSWORD;
+const passwordBank = process.env.CENTRAL_BANK_ACCOUNT_PASSWORD;
 
 const fechaActual = new Date();
 
@@ -28,16 +28,28 @@ const dia = String(fechaActual.getDate()).padStart(2, '0');
 
 const postUsers = async(req, res) =>{
     const {email, password} = req.body;
-
-    const query = {
-        text: 'SELECT id_tipo_user, pnombre_user FROM users WHERE email = $1 AND password = $2',
-        values: [email, password]
-    }
-
     try {
+        
+        const query = {
+            text: 'SELECT id_tipo_user, pnombre_user, password FROM users WHERE email = $1',
+            values: [email]
+        }
+
         const response = await pool.query(query);
+        console.log(response);
+
         if (response.rows.length > 0) {          
-          res.status(200).json(response.rows);
+            const user = response.rows[0];
+            const isPasswordValid = await argon2.verify(user.password, password);
+            const userData = {
+                id_tipo_user: user.id_tipo_user,
+                pnombre_user: user.pnombre_user
+            };
+            if (isPasswordValid) {
+                res.status(200).json({userData});
+            } else {
+                res.status(401).json({ error: 'Invalid email or password' });
+            }
         } else {
           res.status(401).json({ error: 'Invalid email or password' });
         }
@@ -97,7 +109,7 @@ const postProducts = async(req, res) => {
 
 const getUsers = async(req, res) => {
     try {
-        const response = await pool.query('SELECT u.id, u.pnombre_user, u.email, u.password, tu.nombre_tipo_user FROM users u JOIN tipo_user tu ON u.id_tipo_user = tu.id_tipo_user ORDER BY u.id');
+        const response = await pool.query('SELECT u.id_user, u.email, u.password, tu.tipo_user, u.pnombre_user FROM users u JOIN tipo_user tu ON u.id_tipo_user = tu.id_tipo_user ORDER BY u.id_user');
         res.status(200).json(response.rows);
     } catch (error) {
         console.error('Error al obtener la lista de usuarios: ', error);
@@ -107,8 +119,9 @@ const getUsers = async(req, res) => {
 
 const postWebpay = async(req, res) => {
     let { total: amount, products: products } = req.body;
+    console.log(req.body);
     const sessionId = '3'; // Asegúrate de generar un sessionId único si es necesario
-    const returnUrl = 'https://ferraamas.netlify.app/result';
+    const returnUrl = 'http://localhost:5173/result';
     let buyOrder = '';
     const divisa = req.body.divisaType; // Asegúrate de que este dato es correcto y necesario
     
@@ -128,6 +141,7 @@ const postWebpay = async(req, res) => {
         // Inserta en la tabla purchase_orders
         const insertResponse = await pool.query('INSERT INTO purchase_orders (user_id, status, total_amount, order_details) VALUES ($1, $2, $3, $4) RETURNING *', [ parseInt(sessionId), 'CREATED', amount, JSON.stringify(products)]);
         // Maneja la respuesta de la inserción
+        console.log(insertResponse.rows[0].order_number);
         buyOrder = insertResponse.rows[0].order_number;
         
         if (insertResponse.rows.length > 0) {
@@ -172,6 +186,7 @@ const getWebpayReturn = async(req, res) => {
         const commitResponse = await tx.commit(token_ws);
         if (commitResponse.status === 'AUTHORIZED') {
             const orderNumber = commitResponse.buy_order;
+            console.log(orderNumber);
             const response = await pool.query('SELECT * FROM purchase_orders WHERE order_number = $1', [orderNumber]);
             productos = JSON.parse(response.rows[0].order_details);
             await Promise.all(productos.map(async (producto) => {
@@ -192,17 +207,30 @@ const getWebpayReturn = async(req, res) => {
 }
 
 const postCreateUser = async(req, res) => {
-    const {email: email, pnombre: pnombre, password: password} = req.body
-    
+    const {email: email, password: password, confirmPassword: confirmPassword, pnombre: pnombre} = req.body;
+    const normalizePnombre = pnombre.charAt(0).toUpperCase() + pnombre.slice(1).toLowerCase();
+    if(password !== confirmPassword){
+        return res.status(400).json({error: 'Las contraseñas no coinciden'});
+    }
+
     try{
+
+        const passwordHash = await argon2.hash(password, {
+            type: argon2.argon2id,
+            memoryCost: 2 ** 16,
+            timeCost: 3,
+            parallelism: 1
+        });
+
         const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
 
         if(existingUser.rows.length > 0) {
             return res.status(400).json({error: 'El Email esta en uso'});
         }
 
-        await pool.query('INSERT INTO users (pnombre_user, email, password, id_tipo_user) VALUES ($1, $2, $3, 3)', [pnombre, email, password])
+        await pool.query('INSERT INTO users (email, password, id_tipo_user, pnombre_user) VALUES ($1, $2, 3, $3)', [email, passwordHash, normalizePnombre])
         res.status(201).json({ message: 'Usuario creado con éxito' })
+
     }catch(error){
         console.error('Error al crear el usuario:', error);
         res.status(500).json({ error: 'Ocurrió un error al crear el usuario. Inténtalo de nuevo más tarde.' });
