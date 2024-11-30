@@ -2,6 +2,7 @@ const axios = require('axios');
 const { Pool } = require('pg');
 const { WebpayPlus } = require('transbank-sdk');
 const argon2 = require('argon2');
+const jwt = require('jsonwebtoken');
 const {config} = require('dotenv');
 config()
 
@@ -26,8 +27,23 @@ const anno = fechaActual.getFullYear();
 const mes = String(fechaActual.getMonth() + 1).padStart(2, '0');
 const dia = String(fechaActual.getDate()).padStart(2, '0');
 
+
 const postUsers = async(req, res) =>{
     const {email, password} = req.body;
+
+    if (email === undefined || password === undefined) {
+        return res.status(400).json({ error: 'Email y contraseña son requeridos' });
+    }
+
+    if (email === '' || password === '') {
+        return res.status(400).json({ error: 'Email y contraseña no pueden estar vacíos' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Email no válido' });
+    }
+
     try {
         
         const query = {
@@ -36,20 +52,25 @@ const postUsers = async(req, res) =>{
         }
 
         const response = await pool.query(query);
-        console.log(response);
 
         if (response.rows.length > 0) {          
             const user = response.rows[0];
             const isPasswordValid = await argon2.verify(user.password, password);
-            const userData = {
-                id_tipo_user: user.id_tipo_user,
-                pnombre_user: user.pnombre_user
-            };
+
             if (isPasswordValid) {
-                res.status(200).json({userData});
+                const userData = {
+                    id_tipo_user: user.id_tipo_user,
+                    email: email,
+                    pnombre_user: user.pnombre_user
+                };
+
+                const token = jwt.sign(userData, process.env.JWT_SECRET, { expiresIn: '1h' });
+                res.status(200).json({ token});
+
             } else {
                 res.status(401).json({ error: 'Invalid email or password' });
             }
+
         } else {
           res.status(401).json({ error: 'Invalid email or password' });
         }
@@ -108,8 +129,14 @@ const postProducts = async(req, res) => {
 }
 
 const getUsers = async(req, res) => {
+    const token = req.body.token;
+
+    if (!token) {
+        return res.status(400).json({ error: 'Token es requerido' });
+    }
+
     try {
-        const response = await pool.query('SELECT u.id_user, u.email, u.password, tu.tipo_user, u.pnombre_user FROM users u JOIN tipo_user tu ON u.id_tipo_user = tu.id_tipo_user ORDER BY u.id_user');
+        const response = await pool.query('SELECT u.id_user, u.email, tu.tipo_user, u.pnombre_user FROM users u JOIN tipo_user tu ON u.id_tipo_user = tu.id_tipo_user ORDER BY u.id_user');
         res.status(200).json(response.rows);
     } catch (error) {
         console.error('Error al obtener la lista de usuarios: ', error);
@@ -119,9 +146,9 @@ const getUsers = async(req, res) => {
 
 const postWebpay = async(req, res) => {
     let { total: amount, products: products } = req.body;
-    console.log(req.body);
+
     const sessionId = '3'; // Asegúrate de generar un sessionId único si es necesario
-    const returnUrl = 'http://localhost:5173/result';
+    const returnUrl = 'https://ferraamas.netlify.app/result';
     let buyOrder = '';
     const divisa = req.body.divisaType; // Asegúrate de que este dato es correcto y necesario
     
@@ -248,6 +275,21 @@ const updateStock = async(req, res) => {
     }
 }
 
+const verifyToken = async (req, res) => {
+    const token = req.body.token;
+    if (!token) {
+        return res.status(400).json({ error: 'Token es requerido' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        res.status(200).json(decoded);
+    } catch (error) {
+        console.error('Error al verificar el token:', error);
+        res.status(500).json({ error: 'Ocurrió un error al verificar el token. Inténtalo de nuevo más tarde.' });
+    }
+};
+
 module.exports = {
     postUsers,
     getProducts,
@@ -256,5 +298,6 @@ module.exports = {
     postWebpay,
     getWebpayReturn,
     postCreateUser,
-    updateStock
+    updateStock, 
+    verifyToken
 }

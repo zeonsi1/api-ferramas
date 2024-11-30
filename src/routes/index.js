@@ -1,7 +1,8 @@
 const { Router } = require('express');
 const router = Router();
 
-const {getProducts, postUsers, postProducts, getUsers, postWebpay, getWebpayReturn, postCreateUser, updateStock } = require('../controllers/index.controller');
+const {getProducts, postUsers, postProducts, getUsers, postWebpay, getWebpayReturn, postCreateUser, updateStock, verifyToken } = require('../controllers/index.controller');
+
 
 
 /**
@@ -115,7 +116,7 @@ router.post('/products2', postProducts);
 /**
  * @swagger
  * /users-mostrar:
- *   get:
+ *   post:
  *     summary: Obtener una lista de usuarios
  *     responses:
  *       200:
@@ -140,7 +141,7 @@ router.post('/products2', postProducts);
  *                     description: El email del usuario
  *                     example: juan@example.com
  */
-router.get('/users-mostrar', getUsers);
+router.post('/users-mostrar', getUsers);
 
 /**
  * @swagger
@@ -214,5 +215,7 @@ router.get('/webpay-return', getWebpayReturn);
 router.post('/create-user', postCreateUser);
 
 router.put('/update-stock', updateStock);
+
+router.post('/verify-token', verifyToken);
 
 module.exports = router;
